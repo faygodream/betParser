@@ -1,0 +1,6 @@
+.idea/
+*.iml
+demo/.idea/
+demo/target/
+demo/proxies.txt
+*.class

@@ -39,7 +39,7 @@ public class BetService {
             if (highrollerBets == null) return;
 
             JsonObject bet = highrollerBets.getAsJsonObject("bet");
-            if (bet == null) return;
+            if (bet == null || !bet.has("amount") || !bet.has("outcomes")) return;
 
             double amount = bet.get("amount").getAsDouble();
             String currency = bet.has("currency") ? bet.get("currency").getAsString() : "unknown";
@@ -70,12 +70,18 @@ public class BetService {
                 }
             }
 
-            String sportSlug = outcome
-                    .getAsJsonObject("fixture")
-                    .getAsJsonObject("tournament")
-                    .getAsJsonObject("category")
-                    .getAsJsonObject("sport")
-                    .get("slug").getAsString();
+            // Проверяем наличие всей цепочки fixture -> tournament -> category -> sport
+            if (!outcome.has("fixture") || outcome.get("fixture").isJsonNull()) return;
+            JsonObject fixture = outcome.getAsJsonObject("fixture");
+            if (!fixture.has("tournament") || fixture.get("tournament").isJsonNull()) return;
+            JsonObject tournament = fixture.getAsJsonObject("tournament");
+            if (!tournament.has("category") || tournament.get("category").isJsonNull()) return;
+            JsonObject category = tournament.getAsJsonObject("category");
+            if (!category.has("sport") || category.get("sport").isJsonNull()) return;
+            JsonObject sport = category.getAsJsonObject("sport");
+            if (!sport.has("slug")) return;
+
+            String sportSlug = sport.get("slug").getAsString();
 
             if (!SUPPORTED_SPORTS.containsKey(sportSlug)) return;
 
