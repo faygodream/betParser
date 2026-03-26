@@ -1,0 +1,27 @@
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-stakebot}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-stakebot123}
+      POSTGRES_DB: stakebot
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  bot:
+    build: ./demo
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      BOT_USERNAME: ${BOT_USERNAME:-WarningBets_bot}
+      BOT_TOKEN: ${BOT_TOKEN}
+      DB_URL: jdbc:postgresql://db:5432/stakebot
+      DB_USER: ${DB_USER:-stakebot}
+      DB_PASSWORD: ${DB_PASSWORD:-stakebot123}
+
+volumes:
+  pgdata:

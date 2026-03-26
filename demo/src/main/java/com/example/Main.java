@@ -20,16 +20,25 @@ public class Main {
 
         Database database = new Database(dbUrl, dbUser, dbPassword);
 
-        TelegramBot bot = new TelegramBot(database);
+        // Telegram Bot — настройки через переменные окружения
+        String botUsername = env("BOT_USERNAME", "WarningBets_bot");
+        String botToken = env("BOT_TOKEN", "");
+
+        TelegramBot bot = new TelegramBot(database, botUsername, botToken);
 
         // Сбрасываем старые сообщения, накопившиеся пока бот был выключен
-        DeleteWebhook deleteWebhook = new DeleteWebhook();
-        deleteWebhook.setDropPendingUpdates(true);
-        bot.execute(deleteWebhook);
-        System.out.println("Старые сообщения очищены");
+        try {
+            DeleteWebhook deleteWebhook = new DeleteWebhook();
+            deleteWebhook.setDropPendingUpdates(true);
+            bot.execute(deleteWebhook);
+            System.out.println("Старые сообщения очищены");
+        } catch (Exception e) {
+            System.err.println("Не удалось очистить старые сообщения: " + e.getMessage());
+        }
 
         TelegramBotsApi api = new TelegramBotsApi(DefaultBotSession.class);
         api.registerBot(bot);
+        bot.notifyAdminsOnStart();
 
         BetService service = new BetService(bot);
 
