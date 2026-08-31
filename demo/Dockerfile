@@ -8,5 +8,4 @@ RUN mvn package -q -DskipTests
 FROM eclipse-temurin:17-jre
 WORKDIR /app
 COPY --from=build /app/target/stake-bot-1.0.jar app.jar
-COPY proxies.txt proxies.txt
 CMD ["java", "-jar", "app.jar"]

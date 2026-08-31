@@ -2,12 +2,16 @@ package com.example.db;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
 
 public class Database {
+
+    private static final Logger log = LoggerFactory.getLogger(Database.class);
 
     private final HikariDataSource dataSource;
 
@@ -21,7 +25,7 @@ public class Database {
 
         this.dataSource = new HikariDataSource(config);
         createTable();
-        System.out.println("PostgreSQL подключен: " + url);
+        log.info("Подключение к PostgreSQL установлено");
     }
 
     private void createTable() {
@@ -48,9 +52,7 @@ public class Database {
         }
     }
 
-    /**
-     * Зарегистрировать пользователя (без выбора спорта).
-     */
+    /** Зарегистрировать пользователя (без выбора спорта). */
     public void registerUser(long chatId, String username) {
         String sql = """
                 INSERT INTO users (chat_id, username)
@@ -64,13 +66,11 @@ public class Database {
             ps.setString(3, username);
             ps.executeUpdate();
         } catch (SQLException e) {
-            System.err.println("Ошибка registerUser: " + e.getMessage());
+            log.error("registerUser: {}", e.getMessage());
         }
     }
 
-    /**
-     * Получить всех активных подписчиков (без фильтра по спорту).
-     */
+    /** Получить всех активных подписчиков (без фильтра по спорту). */
     public List<Long> getActiveSubscribers() {
         String sql = "SELECT chat_id FROM users WHERE subscription_status = 'active'";
         List<Long> result = new ArrayList<>();
@@ -81,14 +81,12 @@ public class Database {
                 result.add(rs.getLong("chat_id"));
             }
         } catch (SQLException e) {
-            System.err.println("Ошибка getActiveSubscribers: " + e.getMessage());
+            log.error("getActiveSubscribers: {}", e.getMessage());
         }
         return result;
     }
 
-    /**
-     * Добавить или обновить подписку пользователя.
-     */
+    /** Добавить или обновить подписку пользователя. */
     public void subscribe(long chatId, String username, String sport) {
         String sql = """
                 INSERT INTO users (chat_id, username, sport)
@@ -104,13 +102,11 @@ public class Database {
             ps.setString(5, sport);
             ps.executeUpdate();
         } catch (SQLException e) {
-            System.err.println("Ошибка subscribe: " + e.getMessage());
+            log.error("subscribe: {}", e.getMessage());
         }
     }
 
-    /**
-     * Удалить подписку пользователя.
-     */
+    /** Удалить подписку пользователя. */
     public void unsubscribe(long chatId) {
         String sql = "UPDATE users SET sport = NULL WHERE chat_id = ?";
         try (Connection conn = dataSource.getConnection();
@@ -118,13 +114,11 @@ public class Database {
             ps.setLong(1, chatId);
             ps.executeUpdate();
         } catch (SQLException e) {
-            System.err.println("Ошибка unsubscribe: " + e.getMessage());
+            log.error("unsubscribe: {}", e.getMessage());
         }
     }
 
-    /**
-     * Получить chatId всех активных подписчиков на данный спорт (или "all").
-     */
+    /** Получить chatId всех активных подписчиков на данный спорт (или "all"). */
     public List<Long> getSubscribers(String sportSlug) {
         String sql = "SELECT chat_id FROM users WHERE (sport = ? OR sport = 'all') AND subscription_status = 'active'";
         List<Long> result = new ArrayList<>();
@@ -137,14 +131,12 @@ public class Database {
                 }
             }
         } catch (SQLException e) {
-            System.err.println("Ошибка getSubscribers: " + e.getMessage());
+            log.error("getSubscribers: {}", e.getMessage());
         }
         return result;
     }
 
-    /**
-     * Проверить, активна ли подписка пользователя.
-     */
+    /** Проверить, активна ли подписка пользователя. */
     public boolean isActive(long chatId) {
         String sql = "SELECT subscription_status FROM users WHERE chat_id = ?";
         try (Connection conn = dataSource.getConnection();
@@ -156,14 +148,12 @@ public class Database {
                 }
             }
         } catch (SQLException e) {
-            System.err.println("Ошибка isActive: " + e.getMessage());
+            log.error("isActive: {}", e.getMessage());
         }
         return false;
     }
 
-    /**
-     * Установить статус подписки пользователю.
-     */
+    /** Установить статус подписки пользователю. */
     public boolean setSubscriptionStatus(long chatId, String status) {
         String sql = "UPDATE users SET subscription_status = ? WHERE chat_id = ?";
         try (Connection conn = dataSource.getConnection();
@@ -172,14 +162,12 @@ public class Database {
             ps.setLong(2, chatId);
             return ps.executeUpdate() > 0;
         } catch (SQLException e) {
-            System.err.println("Ошибка setSubscriptionStatus: " + e.getMessage());
+            log.error("setSubscriptionStatus: {}", e.getMessage());
             return false;
         }
     }
 
-    /**
-     * Получить информацию о пользователе.
-     */
+    /** Получить информацию о пользователе. */
     public String getUserInfo(long chatId) {
         String sql = "SELECT chat_id, username, sport, subscription_status, created_at FROM users WHERE chat_id = ?";
         try (Connection conn = dataSource.getConnection();
@@ -196,14 +184,12 @@ public class Database {
                 }
             }
         } catch (SQLException e) {
-            System.err.println("Ошибка getUserInfo: " + e.getMessage());
+            log.error("getUserInfo: {}", e.getMessage());
         }
         return null;
     }
 
-    /**
-     * Список всех пользователей.
-     */
+    /** Список всех пользователей. */
     public List<String> getAllUsers() {
         String sql = "SELECT chat_id, username, subscription_status FROM users ORDER BY created_at";
         List<String> result = new ArrayList<>();
@@ -217,7 +203,7 @@ public class Database {
                         rs.getString("subscription_status"));
             }
         } catch (SQLException e) {
-            System.err.println("Ошибка getAllUsers: " + e.getMessage());
+            log.error("getAllUsers: {}", e.getMessage());
         }
         return result;
     }

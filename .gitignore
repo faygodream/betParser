@@ -1,12 +1,11 @@
 # IDE
 .idea/
 *.iml
-demo/.idea/
 
 # Build
-demo/target/
+target/
 *.class
 
 # Secrets
-demo/proxies.txt
 .env
+demo/proxies.txt

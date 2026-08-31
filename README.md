@@ -1,94 +1,77 @@
-# StakeBot — Telegram-бот для мониторинга крупных ставок
+# StakeBot
 
-Бот отслеживает крупные ставки на киберспорт (CS2, Dota 2) в реальном времени и отправляет уведомления подписчикам в Telegram.
+Telegram-бот, который в реальном времени отслеживает крупные ставки на киберспорт (CS2, Dota 2)
+и рассылает уведомления подписчикам.
 
-## Возможности
+## Как это работает
 
-- Мониторинг крупных ставок через WebSocket в реальном времени
-- Уведомления в Telegram с фильтрацией по играм (CS2 / Dota 2 / всё)
-- Система платных подписок с админ-управлением
-- Inline-кнопки для удобного взаимодействия
-- Поддержка SOCKS5/HTTP прокси с ротацией IP
-- PostgreSQL для хранения пользователей
-- Docker-деплой одной командой
+1. `StakeWebSocket` держит постоянное GraphQL-over-WebSocket соединение с источником данных
+   и переподключается при обрыве: перебирает домены, ротирует прокси, раз в 30 минут
+   принудительно переустанавливает соединение для смены IP.
+2. `BetService` разбирает входящий JSON, отфильтровывает экспрессы и неподдерживаемые виды спорта,
+   отсекает ставки ниже порога и формирует текст уведомления.
+3. `TelegramBot` рассылает уведомление тем подписчикам, кто выбрал соответствующую игру.
+4. `Database` (PostgreSQL + HikariCP) хранит пользователей, выбранный спорт и статус подписки.
 
 ## Стек
 
-- Java 17
-- Telegram Bots API
-- OkHttp (WebSocket)
-- PostgreSQL + HikariCP
-- Conscrypt (TLS)
-- Docker + Docker Compose
+Java 17, Telegram Bots API, OkHttp (WebSocket), Gson, PostgreSQL + HikariCP,
+Conscrypt (TLS), SLF4J, Maven, Docker Compose.
 
-## Быстрый старт (Docker)
+## Конфигурация
+
+Все настройки читаются из переменных окружения, значений по умолчанию нет —
+при отсутствии обязательной переменной приложение падает на старте.
+
+| Переменная | Обязательна | Описание |
+|---|---|---|
+| `BOT_TOKEN` | да | Токен Telegram-бота |
+| `BOT_USERNAME` | да | Username бота |
+| `ADMIN_IDS` | нет | Chat id администраторов через запятую |
+| `DB_URL` | да | JDBC URL PostgreSQL |
+| `DB_USER` | да | Пользователь БД |
+| `DB_PASSWORD` | да | Пароль БД |
+| `PROXY_FILE` | нет | Путь к файлу со списком прокси |
+
+## Запуск в Docker
 
 ```bash
-# 1. Клонировать
-git clone https://github.com/your-username/betParser2.git
-cd betParser2
-
-# 2. Настроить окружение
+git clone https://github.com/faygodream/betParser.git
+cd betParser
 cp .env.example .env
-nano .env  # заполнить BOT_TOKEN
-
-# 3. Настроить прокси
-nano demo/proxies.txt
-# Формат: socks5://user:pass@host:port
-
-# 4. Запустить
+# заполнить .env своими значениями
 docker compose up -d
-
-# Логи
 docker compose logs -f bot
 ```
 
-## Локальный запуск (без Docker)
+## Локальный запуск
 
-1. Запустить PostgreSQL (порт 5433):
 ```bash
 docker run -d --name stakebot-db \
-  -e POSTGRES_USER=stakebot \
-  -e POSTGRES_PASSWORD=stakebot123 \
-  -e POSTGRES_DB=stakebot \
+  -e POSTGRES_USER=stakebot -e POSTGRES_PASSWORD=<пароль> -e POSTGRES_DB=stakebot \
   -p 5433:5432 postgres:16
-```
 
-2. Заполнить `demo/proxies.txt`
-
-3. Собрать и запустить через IDE или Maven:
-```bash
 cd demo
 mvn package
 java -jar target/stake-bot-1.0.jar
 ```
 
-## Переменные окружения
-
-| Переменная | По умолчанию | Описание |
-|------------|-------------|----------|
-| `BOT_TOKEN` | — | Токен Telegram-бота (обязательно) |
-| `BOT_USERNAME` | `WarningBets_bot` | Username бота |
-| `DB_URL` | `jdbc:postgresql://localhost:5433/stakebot` | URL базы данных |
-| `DB_USER` | `stakebot` | Пользователь БД |
-| `DB_PASSWORD` | `stakebot123` | Пароль БД |
-
 ## Команды бота
 
-**Пользователи:**
-- `/start` — главное меню с кнопками
-- Кнопка «Подписаться» → выбор игры (CS2 / Dota 2 / Всё)
-- Кнопка «Мой статус» → информация о подписке
+Пользователь: `/start` и дальше inline-кнопки — подписка, выбор игры (CS2 / Dota 2 / всё),
+статус подписки, отписка.
 
-**Админы:**
-- `/grant <chat_id>` — выдать подписку
-- `/revoke <chat_id>` — отозвать подписку
-- `/status <chat_id>` — статус пользователя
-- `/users` — список всех пользователей
+Администратор: `/grant <chat_id>`, `/revoke <chat_id>`, `/status <chat_id>`, `/users`.
 
-## Формат прокси (proxies.txt)
+## Прокси
+
+Файл со списком прокси, по одному в строке:
 
 ```
+socks5://host:port
 socks5://user:pass@host:port
 http://user:pass@host:port
 ```
+
+Файл содержит учётные данные и в репозиторий не коммитится.
+Если он пуст или отсутствует, используется прямое подключение.

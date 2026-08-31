@@ -1,6 +1,8 @@
 package com.example.bot;
 
 import com.example.db.Database;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.AnswerCallbackQuery;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
@@ -17,21 +19,23 @@ import java.util.Set;
 
 public class TelegramBot extends TelegramLongPollingBot {
 
-    private static final Set<Long> ADMINS = Set.of(REDACTED_ADMIN_IDL);
+    private static final Logger log = LoggerFactory.getLogger(TelegramBot.class);
 
     private final Database database;
     private final String botUsername;
     private final String botToken;
+    private final Set<Long> admins;
     private final int startTime = (int) (System.currentTimeMillis() / 1000);
 
-    public TelegramBot(Database database, String botUsername, String botToken) {
+    public TelegramBot(Database database, String botUsername, String botToken, Set<Long> admins) {
         this.database = database;
         this.botUsername = botUsername;
         this.botToken = botToken;
+        this.admins = Set.copyOf(admins);
     }
 
     public void notifyAdminsOnStart() {
-        for (Long adminId : ADMINS) {
+        for (Long adminId : admins) {
             InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
             List<List<InlineKeyboardButton>> rows = new ArrayList<>();
             rows.add(List.of(btn("📋 Пользователи", "admin_users")));
@@ -73,10 +77,10 @@ public class TelegramBot extends TelegramLongPollingBot {
         Long chatId = update.getMessage().getChatId();
         String username = update.getMessage().getFrom().getUserName();
         String text = update.getMessage().getText().trim().toLowerCase();
-        System.out.println("Получено от " + chatId + " (@" + username + "): [" + text + "]");
+        log.info("Сообщение от {}: [{}]", chatId, text);
 
         // Админские текстовые команды (grant/revoke/status требуют аргументов)
-        if (ADMINS.contains(chatId) && handleAdminCommand(chatId, text)) {
+        if (admins.contains(chatId) && handleAdminCommand(chatId, text)) {
             return;
         }
 
@@ -94,7 +98,7 @@ public class TelegramBot extends TelegramLongPollingBot {
         String data = callback.getData();
         int messageId = callback.getMessage().getMessageId();
 
-        System.out.println("Кнопка от " + chatId + " (@" + username + "): " + data);
+        log.info("Callback от {}: {}", chatId, data);
 
         // Подтверждаем нажатие кнопки
         answerCallback(callback.getId());
@@ -122,28 +126,28 @@ public class TelegramBot extends TelegramLongPollingBot {
                 InlineKeyboardMarkup kb = new InlineKeyboardMarkup();
                 kb.setKeyboard(List.of(List.of(btn("🔙 Меню", "back_menu"))));
                 editMessageWithKeyboard(chatId, messageId, "✅ Ты подписан на крупные ставки CS2!", kb);
-                System.out.println("Подписчик " + chatId + " → counter-strike");
+                log.info("Подписка {} на counter-strike", chatId);
             }
             case "sport_dota" -> {
                 database.subscribe(chatId, username, "dota-2");
                 InlineKeyboardMarkup kb = new InlineKeyboardMarkup();
                 kb.setKeyboard(List.of(List.of(btn("🔙 Меню", "back_menu"))));
                 editMessageWithKeyboard(chatId, messageId, "✅ Ты подписан на крупные ставки Dota 2!", kb);
-                System.out.println("Подписчик " + chatId + " → dota-2");
+                log.info("Подписка {} на dota-2", chatId);
             }
             case "sport_all" -> {
                 database.subscribe(chatId, username, "all");
                 InlineKeyboardMarkup kb = new InlineKeyboardMarkup();
                 kb.setKeyboard(List.of(List.of(btn("🔙 Меню", "back_menu"))));
                 editMessageWithKeyboard(chatId, messageId, "✅ Ты подписан на крупные ставки CS2 и Dota 2!", kb);
-                System.out.println("Подписчик " + chatId + " → all");
+                log.info("Подписка {} на все виды спорта", chatId);
             }
             case "stop" -> {
                 database.unsubscribe(chatId);
                 InlineKeyboardMarkup kb = new InlineKeyboardMarkup();
                 kb.setKeyboard(List.of(List.of(btn("🔙 Меню", "back_menu"))));
                 editMessageWithKeyboard(chatId, messageId, "❌ Ты отписан от уведомлений.", kb);
-                System.out.println("Отписался: " + chatId);
+                log.info("Отписка {}", chatId);
             }
             case "my_status" -> {
                 String info = database.getUserInfo(chatId);
@@ -155,7 +159,7 @@ public class TelegramBot extends TelegramLongPollingBot {
             }
             // Админские кнопки
             case "admin_users" -> {
-                if (!ADMINS.contains(chatId)) return;
+                if (!admins.contains(chatId)) return;
                 List<String> users = database.getAllUsers();
                 if (users.isEmpty()) {
                     editMessage(chatId, messageId, "Нет пользователей");
@@ -170,7 +174,7 @@ public class TelegramBot extends TelegramLongPollingBot {
                 }
             }
             case "admin_menu" -> {
-                if (!ADMINS.contains(chatId)) return;
+                if (!admins.contains(chatId)) return;
                 InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
                 keyboard.setKeyboard(List.of(
                         List.of(btn("📋 Пользователи", "admin_users"))
@@ -273,7 +277,7 @@ public class TelegramBot extends TelegramLongPollingBot {
         msg.setChatId(chatId.toString());
         msg.setText(text);
         try { execute(msg); }
-        catch (TelegramApiException e) { System.err.println("Ошибка отправки (chatId=" + chatId + "): " + e.getMessage()); }
+        catch (TelegramApiException e) { log.warn("Не удалось отправить сообщение (chatId={}): {}", chatId, e.getMessage()); }
     }
 
     private void sendWithKeyboard(Long chatId, String text, InlineKeyboardMarkup keyboard) {
@@ -282,7 +286,7 @@ public class TelegramBot extends TelegramLongPollingBot {
         msg.setText(text);
         msg.setReplyMarkup(keyboard);
         try { execute(msg); }
-        catch (TelegramApiException e) { System.err.println("Ошибка отправки (chatId=" + chatId + "): " + e.getMessage()); }
+        catch (TelegramApiException e) { log.warn("Не удалось отправить сообщение (chatId={}): {}", chatId, e.getMessage()); }
     }
 
     private void editMessage(Long chatId, int messageId, String text) {
@@ -291,7 +295,7 @@ public class TelegramBot extends TelegramLongPollingBot {
         edit.setMessageId(messageId);
         edit.setText(text);
         try { execute(edit); }
-        catch (TelegramApiException e) { System.err.println("Ошибка редактирования: " + e.getMessage()); }
+        catch (TelegramApiException e) { log.warn("Не удалось отредактировать сообщение: {}", e.getMessage()); }
     }
 
     private void editMessageWithKeyboard(Long chatId, int messageId, String text, InlineKeyboardMarkup keyboard) {
@@ -301,13 +305,13 @@ public class TelegramBot extends TelegramLongPollingBot {
         edit.setText(text);
         edit.setReplyMarkup(keyboard);
         try { execute(edit); }
-        catch (TelegramApiException e) { System.err.println("Ошибка редактирования: " + e.getMessage()); }
+        catch (TelegramApiException e) { log.warn("Не удалось отредактировать сообщение: {}", e.getMessage()); }
     }
 
     private void answerCallback(String callbackId) {
         AnswerCallbackQuery answer = new AnswerCallbackQuery();
         answer.setCallbackQueryId(callbackId);
         try { execute(answer); }
-        catch (TelegramApiException e) { System.err.println("Ошибка answerCallback: " + e.getMessage()); }
+        catch (TelegramApiException e) { log.warn("Не удалось подтвердить callback: {}", e.getMessage()); }
     }
 }

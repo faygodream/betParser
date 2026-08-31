@@ -3,13 +3,11 @@ services:
     image: postgres:16
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${DB_USER:-stakebot}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-stakebot123}
+      POSTGRES_USER: ${DB_USER:?set DB_USER in .env}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
       POSTGRES_DB: stakebot
     volumes:
       - pgdata:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
 
   bot:
     build: ./demo
@@ -17,11 +15,15 @@ services:
     depends_on:
       - db
     environment:
-      BOT_USERNAME: ${BOT_USERNAME:-WarningBets_bot}
-      BOT_TOKEN: ${BOT_TOKEN}
+      BOT_USERNAME: ${BOT_USERNAME:?set BOT_USERNAME in .env}
+      BOT_TOKEN: ${BOT_TOKEN:?set BOT_TOKEN in .env}
+      ADMIN_IDS: ${ADMIN_IDS:-}
       DB_URL: jdbc:postgresql://db:5432/stakebot
-      DB_USER: ${DB_USER:-stakebot}
-      DB_PASSWORD: ${DB_PASSWORD:-stakebot123}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      PROXY_FILE: /app/proxies.txt
+    volumes:
+      - ./demo/proxies.txt:/app/proxies.txt:ro
 
 volumes:
   pgdata:

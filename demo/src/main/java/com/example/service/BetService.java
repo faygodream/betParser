@@ -1,16 +1,23 @@
 package com.example.service;
 
-import com.google.gson.*;
 import com.example.bot.TelegramBot;
+import com.google.gson.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Map;
 import java.util.Set;
 
 public class BetService {
 
+    private static final Logger log = LoggerFactory.getLogger(BetService.class);
+
+    /** Минимальная сумма ставки для уведомления. */
+    private static final double MIN_AMOUNT = 1000;
+
     private final TelegramBot bot;
 
-    // Поддерживаемые игры: slug -> отображаемое название
+    // slug -> отображаемое название
     private static final Map<String, String> SUPPORTED_SPORTS = Map.of(
             "dota-2", "DOTA 2",
             "counter-strike", "CS2"
@@ -52,7 +59,7 @@ public class BetService {
             double odds = outcome.has("odds") ? outcome.get("odds").getAsDouble() : 0;
             String match = outcome.has("fixtureName") ? outcome.get("fixtureName").getAsString() : "Unknown";
 
-            // Тип ставки (исход, фора, тотал и т.д.)
+            // Исход, фора, тотал и т.д.
             String marketName = "—";
             if (outcome.has("market") && !outcome.get("market").isJsonNull()) {
                 JsonObject market = outcome.getAsJsonObject("market");
@@ -61,7 +68,6 @@ public class BetService {
                 }
             }
 
-            // На кого/что поставлено
             String outcomeName = "—";
             if (outcome.has("outcome") && !outcome.get("outcome").isJsonNull()) {
                 JsonObject outcomeObj = outcome.getAsJsonObject("outcome");
@@ -70,7 +76,7 @@ public class BetService {
                 }
             }
 
-            // Проверяем наличие всей цепочки fixture -> tournament -> category -> sport
+            // Цепочка fixture -> tournament -> category -> sport может обрываться на любом уровне
             if (!outcome.has("fixture") || outcome.get("fixture").isJsonNull()) return;
             JsonObject fixture = outcome.getAsJsonObject("fixture");
             if (!fixture.has("tournament") || fixture.get("tournament").isJsonNull()) return;
@@ -85,7 +91,7 @@ public class BetService {
 
             if (!SUPPORTED_SPORTS.containsKey(sportSlug)) return;
 
-            if (amount < 1000) return;
+            if (amount < MIN_AMOUNT) return;
 
             String sportName = SUPPORTED_SPORTS.get(sportSlug);
 
@@ -96,11 +102,11 @@ public class BetService {
                     "💰 Сумма: " + String.format("%.2f", amount) + " " + currency.toUpperCase() + "\n" +
                     "📈 Кэф: " + odds;
 
-            System.out.println("Ставка [" + sportSlug + "]: " + match + " — " + marketName + " → " + outcomeName + " — " + amount + " " + currency);
+            log.info("Ставка [{}]: {} / {} / {} — {} {}", sportSlug, match, marketName, outcomeName, amount, currency);
             bot.broadcastForSport(sportSlug, message);
 
         } catch (Exception e) {
-            System.err.println("Ошибка парсинга сообщения: " + e.getMessage());
+            log.warn("Не удалось разобрать сообщение: {}", e.getMessage());
         }
     }
 }

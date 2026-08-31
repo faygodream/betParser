@@ -1,5 +1,8 @@
 package com.example.ws;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 import java.net.*;
 import java.nio.file.*;
@@ -7,6 +10,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class ProxyManager {
+
+    private static final Logger log = LoggerFactory.getLogger(ProxyManager.class);
 
     private final Path proxyFile;
     private List<ProxyConfig> proxies = new ArrayList<>();
@@ -32,16 +37,16 @@ public class ProxyManager {
                 }
             }
         } catch (IOException e) {
-            System.err.println("Ошибка чтения proxies.txt: " + e.getMessage());
+            log.error("Не удалось прочитать {}: {}", proxyFile.getFileName(), e.getMessage());
         }
         this.proxies = loaded;
         this.currentIndex = 0;
-        System.out.println("Загружено прокси: " + proxies.size());
+        log.info("Загружено прокси: {}", proxies.size());
     }
 
     private ProxyConfig parse(String line) {
         try {
-            // format: type://user:pass@host:port or type://host:port
+            // Формат: type://user:pass@host:port или type://host:port
             String type;
             if (line.startsWith("socks5://")) {
                 type = "socks5";
@@ -50,7 +55,7 @@ public class ProxyManager {
                 type = "http";
                 line = line.substring("http://".length());
             } else {
-                System.err.println("Неизвестный тип прокси: " + line);
+                log.warn("Неизвестный тип прокси в строке конфига");
                 return null;
             }
 
@@ -69,7 +74,7 @@ public class ProxyManager {
 
             return new ProxyConfig(type, host, port, user, pass);
         } catch (Exception e) {
-            System.err.println("Ошибка парсинга прокси: " + line + " — " + e.getMessage());
+            log.warn("Не удалось разобрать строку прокси: {}", e.getMessage());
             return null;
         }
     }
@@ -78,21 +83,17 @@ public class ProxyManager {
         return !proxies.isEmpty();
     }
 
-    /**
-     * Returns the current proxy, or null if no proxies available.
-     */
+    /** Текущий прокси или null, если список пуст. */
     public ProxyConfig current() {
         if (proxies.isEmpty()) return null;
         return proxies.get(currentIndex % proxies.size());
     }
 
-    /**
-     * Switches to the next proxy. Returns true if rotated, false if no proxies.
-     */
+    /** Переключиться на следующий прокси. false, если список пуст. */
     public boolean next() {
         if (proxies.isEmpty()) return false;
         currentIndex = (currentIndex + 1) % proxies.size();
-        System.out.println("Переключение на прокси: " + current());
+        log.info("Переключение на прокси {}", current());
         return true;
     }
 

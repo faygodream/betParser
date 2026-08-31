@@ -1,8 +1,10 @@
 package com.example.ws;
 
-import okhttp3.*;
 import com.example.service.BetService;
+import okhttp3.*;
 import org.conscrypt.Conscrypt;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.net.ssl.*;
 import java.net.Authenticator;
@@ -14,11 +16,13 @@ import java.util.concurrent.TimeUnit;
 
 public class StakeWebSocket {
 
+    private static final Logger log = LoggerFactory.getLogger(StakeWebSocket.class);
+
     private final BetService service;
     private final ProxyManager proxyManager;
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
 
-    // Интервал принудительного переподключения (новый IP) — в минутах
+    // Интервал принудительного переподключения для смены IP, минуты
     private static final long ROTATE_INTERVAL_MINUTES = 30;
 
     private static final String[] WS_URLS = {
@@ -44,7 +48,7 @@ public class StakeWebSocket {
         this.proxyManager = proxyManager;
 
         Security.insertProviderAt(Conscrypt.newProvider(), 1);
-        System.out.println("Conscrypt TLS provider установлен");
+        log.info("TLS-провайдер Conscrypt зарегистрирован");
     }
 
     private OkHttpClient buildClient() {
@@ -69,7 +73,7 @@ public class StakeWebSocket {
             return builder.build();
 
         } catch (Exception e) {
-            System.err.println("Не удалось настроить Conscrypt, используем стандартный TLS: " + e.getMessage());
+            log.warn("Conscrypt недоступен, используется стандартный TLS: {}", e.getMessage());
             OkHttpClient.Builder builder = new OkHttpClient.Builder()
                     .pingInterval(30, TimeUnit.SECONDS)
                     .readTimeout(0, TimeUnit.MILLISECONDS)
@@ -83,11 +87,11 @@ public class StakeWebSocket {
     private void applyProxy(OkHttpClient.Builder builder) {
         ProxyManager.ProxyConfig proxy = proxyManager.current();
         if (proxy == null) {
-            System.out.println("Прокси не настроен — прямое подключение");
+            log.info("Прокси не настроен, используется прямое подключение");
             return;
         }
 
-        System.out.println("Используется прокси: " + proxy);
+        log.info("Используется прокси {}", proxy);
         builder.proxy(proxy.toProxy());
 
         if (proxy.user != null) {
@@ -109,7 +113,7 @@ public class StakeWebSocket {
         String domain = url.replace("wss://", "").replace("/_api/websockets", "");
 
         ProxyManager.ProxyConfig proxy = proxyManager.current();
-        System.out.println("Подключение к: " + url + (proxy != null ? " через " + proxy : " (напрямую)"));
+        log.info("Подключение к {} ({})", url, proxy != null ? proxy : "напрямую");
 
         OkHttpClient client = buildClient();
 
@@ -128,27 +132,25 @@ public class StakeWebSocket {
 
             @Override
             public void onOpen(WebSocket webSocket, Response response) {
-                System.out.println("WebSocket подключен к " + url + "!");
+                log.info("WebSocket подключён к {}", url);
                 currentWebSocket = webSocket;
                 urlIndex = Arrays.asList(WS_URLS).indexOf(url);
                 consecutiveFailures = 0;
 
                 String initMessage = "{\"type\":\"connection_init\",\"payload\":{}}";
                 webSocket.send(initMessage);
-                System.out.println("Отправлен connection_init");
+                log.debug("Отправлен connection_init");
 
-                // Планируем принудительное переподключение для смены IP
                 scheduleRotation();
             }
 
             @Override
             public void onMessage(WebSocket webSocket, String text) {
-                System.out.println("WS: " + text.substring(0, Math.min(text.length(), 300)));
+                log.trace("WS: {}", text.substring(0, Math.min(text.length(), 300)));
 
                 if (text.contains("\"connection_ack\"")) {
-                    System.out.println("Получен connection_ack → отправляем подписку...");
                     webSocket.send(SUBSCRIBE_MESSAGE);
-                    System.out.println("Подписка highrollerSportBets отправлена!");
+                    log.info("Подписка highrollerSportBets отправлена");
                     return;
                 }
 
@@ -162,7 +164,7 @@ public class StakeWebSocket {
             @Override
             public void onFailure(WebSocket webSocket, Throwable t, Response response) {
                 int code = (response != null) ? response.code() : -1;
-                System.err.println("WebSocket ошибка (код " + code + "): " + t.getMessage());
+                log.warn("Ошибка WebSocket (код {}): {}", code, t.getMessage());
                 currentWebSocket = null;
                 consecutiveFailures++;
 
@@ -172,7 +174,7 @@ public class StakeWebSocket {
                         proxyManager.next();
                         consecutiveFailures = 0;
                     }
-                    System.out.println("Смена домена/прокси...");
+                    log.info("Смена домена или прокси");
                     scheduleReconnect(2000);
                 } else {
                     scheduleReconnect(5000);
@@ -181,13 +183,13 @@ public class StakeWebSocket {
 
             @Override
             public void onClosing(WebSocket webSocket, int code, String reason) {
-                System.out.println("WebSocket closing: " + code + " " + reason);
+                log.debug("WebSocket закрывается: {} {}", code, reason);
                 webSocket.close(1000, null);
             }
 
             @Override
             public void onClosed(WebSocket webSocket, int code, String reason) {
-                System.out.println("WebSocket closed: " + code + " " + reason);
+                log.info("WebSocket закрыт: {} {}", code, reason);
                 currentWebSocket = null;
                 scheduleReconnect(5000);
             }
@@ -195,18 +197,17 @@ public class StakeWebSocket {
     }
 
     /**
-     * Принудительное переподключение каждые N минут для смены IP.
-     * Backconnect-прокси выдают новый IP при каждом новом соединении,
-     * поэтому достаточно просто переподключиться.
+     * Backconnect-прокси выдают новый IP на каждом соединении,
+     * поэтому для смены IP достаточно переподключиться.
      */
     private void scheduleRotation() {
         scheduler.schedule(() -> {
-            System.out.println("⏰ Плановая ротация IP — переподключение...");
+            log.info("Плановая ротация IP");
             WebSocket ws = currentWebSocket;
             if (ws != null) {
                 currentWebSocket = null;
                 ws.close(1000, "IP rotation");
-                // onClosed вызовет scheduleReconnect автоматически
+                // Переподключение запустит onClosed
             }
         }, ROTATE_INTERVAL_MINUTES, TimeUnit.MINUTES);
     }
@@ -214,7 +215,7 @@ public class StakeWebSocket {
     private void scheduleReconnect(long delayMs) {
         new Thread(() -> {
             try {
-                System.out.println("Переподключение через " + (delayMs / 1000) + " сек...");
+                log.info("Переподключение через {} с", delayMs / 1000);
                 Thread.sleep(delayMs);
                 connect();
             } catch (InterruptedException e) {
